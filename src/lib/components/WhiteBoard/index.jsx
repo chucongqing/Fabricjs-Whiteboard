@@ -22,15 +22,12 @@ let drawInstance = null;
 let origX;
 let origY;
 let mouseDown = false;
+let _uid = 1;
+function generateUid() {
+  return _uid++;
+}
 
-const options = {
-  currentMode: '',
-  currentColor: '#000000',
-  currentWidth: 5,
-  fill: false,
-  group: {},
-};
-
+/** @enum {string} */
 const modes = {
   RECTANGLE: 'RECTANGLE',
   TRIANGLE: 'TRIANGLE',
@@ -40,7 +37,29 @@ const modes = {
   ERASER: 'ERASER',
 };
 
-const initCanvas = (width, height) => {
+/**
+ * @type {{
+ *  currentMode: modes,
+ *  currentColor: string,
+ *  currentWidth: number,
+ *  fill: boolean,
+ *  group: object,
+ * }}
+ */
+const options = {
+  currentMode: '',
+  currentColor: '#000000',
+  currentWidth: 5,
+  fill: false,
+  group: {},
+};
+
+
+const initCanvas = 
+/**
+ * @returns {fabric.Canvas}
+ */
+(width, height) => {
   const canvas = new fabric.Canvas('canvas', { height, width });
   fabric.Object.prototype.transparentCorners = false;
   fabric.Object.prototype.cornerStyle = 'circle';
@@ -96,11 +115,15 @@ function createLine(canvas) {
   }
 }
 
+/**
+ * @param {fabric.Canvas} canvas
+ */
 function startAddLine(canvas) {
   return ({ e }) => {
     mouseDown = true;
 
     let pointer = canvas.getPointer(e);
+
     drawInstance = new fabric.Line([pointer.x, pointer.y, pointer.x, pointer.y], {
       strokeWidth: options.currentWidth,
       stroke: options.currentColor,
@@ -162,6 +185,7 @@ function startAddRect(canvas) {
       width: 0,
       height: 0,
       selectable: false,
+      uid: generateUid(),
     });
 
     canvas.add(drawInstance);
@@ -288,6 +312,7 @@ function startAddTriangle(canvas) {
       top: origY,
       width: 0,
       height: 0,
+      uid: generateUid(),
       selectable: false,
     });
 
@@ -361,9 +386,31 @@ function clearCanvas(canvas) {
   });
 }
 function canvasToJson(canvas) {
-  alert(JSON.stringify(canvas.toJSON()));
+ const content =  JSON.stringify(canvas.toJSON(["uid"]));
+
+
+// Create a new Blob object with the content and specify the MIME type as "text/plain"
+const blob = new Blob([content], { type: "text/plain" });
+
+// Create a new URL object for the blob using URL.createObjectURL()
+const url = URL.createObjectURL(blob);
+
+// Create a new <a> element to serve as the download link and set its attributes
+const link = document.createElement("a");
+link.setAttribute("href", url);
+link.setAttribute("download", "save.json");
+
+// Append the link to the DOM and click it programmatically to trigger the download
+document.body.appendChild(link);
+link.click();
+
+// Clean up the URL object using URL.revokeObjectURL()
+URL.revokeObjectURL(url);
 }
 
+/**
+ * @param {fabric.Canvas} canvas
+ */
 function draw(canvas) {
   if (options.currentMode !== modes.PENCIL) {
     removeCanvasListener(canvas);
@@ -372,6 +419,33 @@ function draw(canvas) {
     // canvas.freeDrawingBrush = new fabric.PencilBrush(canvas);
     canvas.freeDrawingBrush.width = parseInt(options.currentWidth, 10) || 1;
     canvas.isDrawingMode = true;
+    let points = [];
+    canvas.on('mouse:down', (e)=>{
+      mouseDown = true;
+      const pointer = canvas.getPointer(e);
+      console.log("draw start at ", pointer);
+      points = [];
+      points.push(pointer);
+    });
+    canvas.on('mouse:move', (e)=>{
+      if(mouseDown) {
+        const pointer = canvas.getPointer(e);
+        console.log("draw:" , pointer);
+        points.push(pointer);
+      }
+    });
+
+    canvas.on('mouse:up', (e)=>{
+      mouseDown = false;
+      console.log("draw over: points:", points.length);
+      points = [];
+    });
+
+    canvas.on('path:created', (e)=>{
+      let path = e.path;
+      path.set({uid: generateUid()})
+      console.log("path created:",  path.uid);
+    });
   }
 }
 
@@ -394,6 +468,7 @@ function resizeCanvas(canvas, whiteboard) {
 }
 
 const Whiteboard = ({ aspectRatio = 4 / 3 }) => {
+  /** @type {[fabric.Canvas, function(fabric.Canvas):void]} */
   const [canvas, setCanvas] = useState(null);
   const [brushWidth, setBrushWidth] = useState(5);
   const [isFill, setIsFill] = useState(false);
